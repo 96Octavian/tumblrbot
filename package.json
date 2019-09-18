@@ -1,0 +1,15 @@
+{
+  "name": "tumblrbot",
+  "version": "0.0.0",
+  "description": "tumblrbot",
+  "main": "app.js",
+  "author": {
+    "name": ""
+  },
+  "dependencies": {
+    "commander": "^3.0.1",
+    "telegraf": "^3.32.0",
+    "tumblr.js": "^2.0.2",
+    "winston": "^3.2.1"
+  }
+}
