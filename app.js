@@ -5,7 +5,7 @@ var fs = require( 'fs' );
 var logger = require( './logger' );
 
 const fileContents = fs.readFileSync( './auth.json', 'utf8' )
-var authenticating = "";
+var authenticating = {};
 try {
 	authenticating = JSON.parse( fileContents )
 } catch ( err ) {
