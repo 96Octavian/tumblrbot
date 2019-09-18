@@ -30,6 +30,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="app.js" />
+    <Content Include="auth.json">
+      <SubType>Code</SubType>
+    </Content>
     <Content Include="logger.js">
       <SubType>Code</SubType>
     </Content>
