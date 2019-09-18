@@ -197,7 +197,8 @@ bot.command( 'blog', ctx => {
 } )
 bot.action( /.+/, ( ctx ) => {
 	ctx.session.name = ctx.match[0]
-	ctx.answerCallbackQuery( ctx.match[0] + ' set as destination' )
+	//ctx.answerCallbackQuery( ctx.match[0] + ' set as destination' )
+	ctx.answerCbQuery( ctx.match[0] + ' set as destination' )
 	ctx.editMessageText( ctx.match[0] + ' set as destination' )
 	logger.info( ctx.match[0], 'set as destination for', ctx.chat.id )
 } )
