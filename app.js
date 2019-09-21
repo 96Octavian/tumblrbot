@@ -1,6 +1,5 @@
 const Telegraf = require( 'telegraf' );
 var tumblr = require( 'tumblr.js' );
-var fs = require( 'fs' );
 
 var logger = require( './logger' );
 var AWS = require( 'aws-sdk' );
@@ -451,7 +450,7 @@ var download_auth = function () {
 
 var upload_auth = function () {
 
-	let params = { Body: JSON.stringify(authenticating), Bucket: "tumblr.auth", Key: "auth.json" };
+	let params = { Body: JSON.stringify( authenticating ), Bucket: "tumblr.auth", Key: "auth.json" };
 
 	s3.putObject( params, function ( err, data ) {
 		if ( err ) logger.error( err.code, "-", err.message );
