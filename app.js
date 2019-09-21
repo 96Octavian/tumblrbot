@@ -52,8 +52,7 @@ var token = function ( ctx ) {
 bot.command( 'login', ctx => {
 	logger.debug( '\'/login\' from', ctx.chat.id );
 	let arr = authenticating[ctx.chat.id];
-	ctx.session.client = tumblr.createClient( arr );
-	identity( ctx );
+	identity_new( ctx, arr );
 } );
 bot.command( 'allset', ctx => {
 	logger.debug( '\'/allset\' from', ctx.chat.id );
@@ -67,9 +66,8 @@ bot.command( 'allset', ctx => {
 		fixedJSON = fixedJSON.replace( /(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ' );
 		logger.debug( fixedJSON );
 		let arr = JSON.parse( fixedJSON );
-		ctx.session.client = tumblr.createClient( arr );
-		identity( ctx );
-		authenticating[ctx.chat.id] = arr;
+		identity_new( ctx, arr );
+		//authenticating[ctx.chat.id] = arr;
 		upload_auth();
 		ctx.reply( 'Credential recorded, testing...' );
 	}
@@ -88,6 +86,14 @@ var set = function ( ctx ) {
 		ctx.reply( 'Credentials incomplete' );
 	}
 };
+var identity_new = function ( ctx, newclient ) {
+	if ( typeof authenticating[ctx.chat.id] === 'undefined' ) {
+		authenticating[ctx.chat.id] = newclient;
+		upload_auth();
+	}
+	ctx.session.client = tumblr.createClient( newclient );
+	identity( ctx );
+}
 bot.command( ['consumer_secret', 'consumer_key', 'token', 'token_secret', 'set'], ctx => {
 	ctx.session.clients = ctx.session.clients || {};
 	var text = ctx.message.text;
@@ -108,6 +114,7 @@ bot.command( ['consumer_secret', 'consumer_key', 'token', 'token_secret', 'set']
 	}
 } );
 var identity = function ( ctx ) {
+
 	ctx.session.names = [];
 	ctx.session.client.userInfo( function ( err, data ) {
 		if ( err ) {
