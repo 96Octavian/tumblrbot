@@ -4,7 +4,7 @@ var logger = winston.createLogger( {
 	transports: [
 		new winston.transports.File( {
 			level: 'info',
-			filename: './nodebot.log',
+			filename: './tumblrbot.log',
 			handleExceptions: true,
 			json: false,
 			maxsize: 5242880, //5MB

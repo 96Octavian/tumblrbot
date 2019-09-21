@@ -1,38 +1,24 @@
-var program = require( 'commander' );
 const Telegraf = require( 'telegraf' );
 var tumblr = require( 'tumblr.js' );
 var fs = require( 'fs' );
-var logger = require( './logger' );
 
-const fileContents = fs.readFileSync( './auth.json', 'utf8' )
+var logger = require( './logger' );
+var AWS = require( 'aws-sdk' );
+
+const s3 = new AWS.S3();
+
 var authenticating = {};
-try {
-	authenticating = JSON.parse( fileContents )
-} catch ( err ) {
-	console.error( err )
-}
 
 /*
 Missing chat posts
 */
 
-program
-	.version( '0.0.5' )
-	.option( '-T, --Token <TOKEN>', 'Specify the bot TOKEN' )
-	.parse( process.argv );
-if ( program.Token ) {
-	BOT_TOKEN = program.Token;
-	logger.info( 'Token received' )
-}
-else {
-	logger.error( 'You must specify a Token for this bot' );
-	process.exit( 1 );
-}
+const BOT_TOKEN = process.env.TOKEN;
 
-const bot = new Telegraf( BOT_TOKEN )
-const { Extra, session, Markup } = Telegraf
+const bot = new Telegraf( BOT_TOKEN );
+const { Extra, session, Markup } = Telegraf;
 
-bot.use( session() )
+bot.use( session() );
 //Uncomment once if a message crashes the bot
 //bot.on('message', ctx => console.log('Message'));
 
@@ -41,37 +27,37 @@ AUTHENTICATION SECTION
 */
 
 var consumer_key = function ( ctx ) {
-	logger.debug( 'consumer_key from', ctx.chat.id )
+	logger.debug( 'consumer_key from', ctx.chat.id );
 	logger.info( 'Received consumer_key' );
 	ctx.session.clients.consumer_key = ctx.message.text.replace( '/consumer_key ', '' );
 	return ctx.reply( ctx.session.clients );
-}
+};
 var consumer_secret = function ( ctx ) {
-	logger.debug( 'consumer_secret from', ctx.chat.id )
+	logger.debug( 'consumer_secret from', ctx.chat.id );
 	logger.info( 'Received consumer_secret' );
 	ctx.session.clients.consumer_secret = ctx.message.text.replace( '/consumer_secret ', '' );
 	return ctx.reply( ctx.session.clients );
-}
+};
 var token_secret = function ( ctx ) {
-	logger.debug( 'token_secret from', ctx.chat.id )
+	logger.debug( 'token_secret from', ctx.chat.id );
 	logger.info( 'Received token_secret' );
 	ctx.session.clients.token_secret = ctx.message.text.replace( '/token_secret ', '' );
 	return ctx.reply( ctx.session.clients );
-}
+};
 var token = function ( ctx ) {
-	logger.debug( 'token from', ctx.chat.id )
+	logger.debug( 'token from', ctx.chat.id );
 	logger.info( 'Received token' );
 	ctx.session.clients.token = ctx.message.text.replace( '/token ', '' );
 	return ctx.reply( ctx.session.clients );
-}
+};
 bot.command( 'login', ctx => {
-	logger.debug( '\'/login\' from', ctx.chat.id )
-	arr = authenticating[ctx.chat.id];
+	logger.debug( '\'/login\' from', ctx.chat.id );
+	let arr = authenticating[ctx.chat.id];
 	ctx.session.client = tumblr.createClient( arr );
 	identity( ctx );
-} )
+} );
 bot.command( 'allset', ctx => {
-	logger.debug( '\'/allset\' from', ctx.chat.id )
+	logger.debug( '\'/allset\' from', ctx.chat.id );
 	var firstJSON = ctx.message.text.replace( '/allset', '' );
 	if ( !firstJSON.trim() ) {
 		logger.warn( 'No oAuth key specified' );
@@ -81,36 +67,30 @@ bot.command( 'allset', ctx => {
 		var fixedJSON = firstJSON.replace( /(\r\n|\n|\r)/gm, "" ).replace( /'/g, "\"" );
 		fixedJSON = fixedJSON.replace( /(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ' );
 		logger.debug( fixedJSON );
-		arr = JSON.parse( fixedJSON );
+		let arr = JSON.parse( fixedJSON );
 		ctx.session.client = tumblr.createClient( arr );
 		identity( ctx );
 		authenticating[ctx.chat.id] = arr;
-		fs.writeFile( './auth.json', JSON.stringify( authenticating ), function ( err ) {
-			if ( err ) { logger.error( err ); return }
-			else { logger.warn( 'New client ID set' ) }
-		} )
+		upload_auth();
 		ctx.reply( 'Credential recorded, testing...' );
 	}
-} )
+} );
 var set = function ( ctx ) {
-	logger.debug( '\'/set\' from', ctx.chat.id )
+	logger.debug( '\'/set\' from', ctx.chat.id );
 	if ( Object.keys( ctx.session.clients ).length === 4 ) {
 		ctx.session.client = tumblr.createClient( ctx.session.clients );
 		identity( ctx );
 		authenticating[ctx.chat.id] = ctx.session.clients;
-		fs.writeFile( './auth.json', JSON.stringify( authenticating ), function ( err ) {
-			if ( err ) logger.error( err );
-			logger.warn( 'New client ID set' );
-		} )
+		upload_auth();
 		return ctx.reply( 'Credential recorded, testing...' );
 	}
 	else {
 		logger.error( 'Client credentials not completely specified' );
 		ctx.reply( 'Credentials incomplete' );
 	}
-}
+};
 bot.command( ['consumer_secret', 'consumer_key', 'token', 'token_secret', 'set'], ctx => {
-	ctx.session.clients = ctx.session.clients || {}
+	ctx.session.clients = ctx.session.clients || {};
 	var text = ctx.message.text;
 	if ( text === '/set' ) {
 		set( ctx );
@@ -125,32 +105,29 @@ bot.command( ['consumer_secret', 'consumer_key', 'token', 'token_secret', 'set']
 		token( ctx );
 	}
 	else if ( text.substring( 0, 14 ) === '/token_secret ' ) {
-		token_secret( ctx )
+		token_secret( ctx );
 	}
-} )
+} );
 var identity = function ( ctx ) {
-	ctx.session.names = []
+	ctx.session.names = [];
 	ctx.session.client.userInfo( function ( err, data ) {
 		if ( err ) {
 			delete authenticating[ctx.chat.id];
-			fs.writeFile( './auth.json', JSON.stringify( authenticating ), function ( err ) {
-				if ( err ) { logger.error( err ); return }
-				else { logger.warn( 'Wrong credentials: ID removed' ) }
-			} )
+			upload_auth();
 			ctx.reply( 'Wrong credentials, removed' );
 			return;
 		}
-		msg = 'Username: ' + data.user.name + '\nAvailable blogs: ';
+		let msg = 'Username: ' + data.user.name + '\nAvailable blogs: ';
 		ctx.session.name = ctx.session.name || data.user.blogs[0].name;
 		var i;
 		for ( i in data.user.blogs ) {
-			msg += '\n' + data.user.blogs[i].name
-			ctx.session.names.push( data.user.blogs[i].name )
+			msg += '\n' + data.user.blogs[i].name;
+			ctx.session.names.push( data.user.blogs[i].name );
 		}
 		msg = '<i>Authenticated</i>\n' + msg;
 		return ctx.reply( msg, { parse_mode: 'HTML' } );
-	} )
-}
+	} );
+};
 bot.command( 'me', ctx => {
 	logger.debug( '\'/me\' from', ctx.chat.id );
 	if ( typeof ctx.session.client !== 'undefined' ) {
@@ -160,28 +137,28 @@ bot.command( 'me', ctx => {
 		ctx.reply( 'You are not logged in' );
 		logger.warn( 'User', ctx.chat.id, 'not logged in' );
 	}
-} )
+} );
 //Choose the destination blog
 var blog = function ( ctx ) {
 	if ( typeof ctx.session.names !== 'undefined' && ctx.session.names.length !== 0 ) {
-		buttons = []
-		for ( e in ctx.session.names ) {
-			buttons.push( [Markup.callbackButton( ctx.session.names[e], ctx.session.names[e] )] )
+		let buttons = [];
+		for ( let e in ctx.session.names ) {
+			buttons.push( [Markup.callbackButton( ctx.session.names[e], ctx.session.names[e] )] );
 		}
 		return ctx.reply( 'Choose your blog', Extra.HTML().markup(
-			Markup.inlineKeyboard( buttons ) ) )
+			Markup.inlineKeyboard( buttons ) ) );
 	}
 	else {
 		logger.warn( 'User', ctx.chat.id, 'not logged in' );
 		ctx.reply( 'You are not logged in' );
 	}
-}
+};
 bot.command( 'blog', ctx => {
 	logger.debug( '\'/blog\' from', ctx.chat.id );
 	if ( ctx.message.chat.type !== 'private' ) {
 		ctx.getChatAdministrators()
 			.then( function ( value ) {
-				for ( i in value ) {
+				for ( let i in value ) {
 					if ( ctx.from.id === value[i]['user']['id'] ) {
 						return blog( ctx );
 					}
@@ -189,19 +166,19 @@ bot.command( 'blog', ctx => {
 				ctx.reply( 'You are not an Admin of this group' );
 			}, function ( error ) {
 				return logger.debug( error );
-			} )
+			} );
 	}
 	else {
 		blog( ctx );
 	}
-} )
+} );
 bot.action( /.+/, ( ctx ) => {
-	ctx.session.name = ctx.match[0]
+	ctx.session.name = ctx.match[0];
 	//ctx.answerCallbackQuery( ctx.match[0] + ' set as destination' )
-	ctx.answerCbQuery( ctx.match[0] + ' set as destination' )
-	ctx.editMessageText( ctx.match[0] + ' set as destination' )
-	logger.info( ctx.match[0], 'set as destination for', ctx.chat.id )
-} )
+	ctx.answerCbQuery( ctx.match[0] + ' set as destination' );
+	ctx.editMessageText( ctx.match[0] + ' set as destination' );
+	logger.info( ctx.match[0], 'set as destination for', ctx.chat.id );
+} );
 
 /*
 TEXT HANDLING SECTION
@@ -212,12 +189,12 @@ var texter = function ( ctx ) {
 	ctx.session.post['body'] = ctx.message.text.replace( '/text ', '' );
 	ctx.reply( 'Post body set' );
 	logger.info( 'Post body set' );
-}
+};
 var titler = function ( ctx ) {
 	ctx.session.post['title'] = ctx.message.text.replace( '/title ', '' );
 	ctx.reply( 'Post title set' );
 	logger.info( 'Post title set' );
-}
+};
 var poster = function ( ctx ) {
 	if ( ctx.session.post.type ) {
 		if ( ctx.session.post.type === 'text' && !ctx.session.post.body ) {
@@ -233,26 +210,26 @@ var poster = function ( ctx ) {
 		ctx.session.client.createPost( ctx.session.name, ctx.session.post, function ( err, data ) {
 			if ( err ) {
 				logger.error( err );
-				ctx.reply( 'Error: no post created' )
+				ctx.reply( 'Error: no post created' );
 			}
 			else {
-				ctx.session.state = ctx.session.state || 'published'
-				logger.info( 'New ' + ctx.session.state + ' post created' )
+				ctx.session.state = ctx.session.state || 'published';
+				logger.info( 'New ' + ctx.session.state + ' post created' );
 				ctx.reply( 'Post!\nLink: http://' + ctx.session.name + '.tumblr.com/post/' + data.id );
-				ctx.session.post = {}
+				ctx.session.post = {};
 			}
 		} );
 	}
 	else {
-		logger.debug( 'Post action requested but no post type set' )
+		logger.debug( 'Post action requested but no post type set' );
 		ctx.reply( 'No post type set' );
 	}
-}
+};
 var tagger = function ( ctx ) {
 	ctx.session.post['tags'] = ctx.message.text.replace( '/tags ', '' );
 	ctx.reply( 'Tags set' );
 	logger.info( 'Tags set' );
-}
+};
 var stater = function ( ctx ) {
 	if ( ['published', 'draft', 'queue', 'private'].indexOf( ctx.message.text.replace( '/state ', '' ) ) !== -1 ) {
 		ctx.session.post['state'] = ctx.message.text.replace( '/state ', '' );
@@ -263,7 +240,7 @@ var stater = function ( ctx ) {
 		ctx.reply( 'State must be one of published, draft, queue, private' );
 		logger.info( 'Unrecognize state \'' + ctx.message.text.replace( '/state ', '' ) + '\'' );
 	}
-}
+};
 var formatter = function ( ctx ) {
 	if ( ['html', 'markdown'].indexOf( ctx.message.text.replace( '/format ', '' ) ) !== -1 ) {
 		ctx.session.post['format'] = ctx.message.text.replace( '/format ', '' );
@@ -274,14 +251,14 @@ var formatter = function ( ctx ) {
 		ctx.reply( 'Unrecognized format' );
 		logger.info( 'Unrecognized format' );
 	}
-}
+};
 
 /*
 PHOTO HANDLING SECTION
 */
 
 var downloadPhoto = function ( ctx, id ) {
-	return app.getFileLink( ctx.message.photo[id].file_id )
+	return bot.getFileLink( ctx.message.photo[id].file_id )
 		.then( function ( value ) {
 			ctx.session.post['source'] = value;
 			logger.info( 'Image source set' );
@@ -290,28 +267,28 @@ var downloadPhoto = function ( ctx, id ) {
 		}, function ( error ) {
 			logger.info( 'Error while getting photo URL' );
 			ctx.reply( 'No photo received' );
-		} )
-}
+		} );
+};
 bot.on( 'photo', ctx => {
 	logger.info( 'Received photo' );
-	ctx.session.post = ctx.session.post || {}
+	ctx.session.post = ctx.session.post || {};
 	ctx.session.post['type'] = 'photo';
 	if ( ctx.message.caption ) { ctx.session.post['caption'] = ctx.message.caption; ctx.reply( 'Caption set' ); logger.info( 'Caption set' ) }
 	var id = ctx.message.photo.length - 1;
 	downloadPhoto( ctx, id );
-} )
+} );
 var captioner = function ( ctx ) {
 	ctx.session.post['caption'] = ctx.message.text.replace( '/caption ', '' );
 	ctx.session.post['type'] = 'photo';
 	ctx.reply( 'Caption set' );
 	logger.info( 'Caption set' );
-}
+};
 var linker = function ( ctx ) {
 	ctx.session.post['link'] = ctx.message.text.replace( '/link ', '' );
 	ctx.session.post['type'] = 'photo';
 	ctx.reply( 'Link set' );
 	logger.info( 'Link set' );
-}
+};
 
 /*
 QUOTES HANDLING SECTION
@@ -322,13 +299,13 @@ var quoter = function ( ctx ) {
 	ctx.session.post['type'] = 'quote';
 	ctx.reply( 'Quote text set' );
 	logger.info( 'Quote text set' );
-}
+};
 var sourcer = function ( ctx ) {
-	ctx.session.post['type'] = 'quote'
+	ctx.session.post['type'] = 'quote';
 	ctx.session.post['source'] = ctx.message.text.replace( '/source ', '' );
 	ctx.reply( 'Quote source set' );
 	logger.info( 'Quote source set' );
-}
+};
 
 /*
 LINK HANDLING SECTION
@@ -339,25 +316,25 @@ var urler = function ( ctx ) {
 	ctx.session.post['type'] = 'link';
 	ctx.reply( 'Link URL set' );
 	logger.info( 'Link URL text set' );
-}
+};
 var descriptioner = function ( ctx ) {
 	ctx.session.post['description'] = ctx.message.text.replace( '/description ', '' );
 	ctx.session.post['type'] = 'link';
 	ctx.reply( 'Link description set' );
 	logger.info( 'Link description set' );
-}
+};
 
 var porter = function ( ctx ) {
 	if ( typeof ctx.session.client === 'undefined' ) {
 		logger.warn( 'User', ctx.chat.id, 'has not yet logged in' );
-		ctx.reply( 'You have to /login first or set your credentials' )
+		ctx.reply( 'You have to /login first or set your credentials' );
 	}
 	else if ( typeof ctx.session.name === 'undefined' ) {
 		logger.warn( 'User', ctx.chat.id, 'has not yet selected a main blog' );
-		ctx.reply( 'You have to select your destination using the /blog command' )
+		ctx.reply( 'You have to select your destination using the /blog command' );
 	}
 	else {
-		ctx.session.post = ctx.session.post || {}
+		ctx.session.post = ctx.session.post || {};
 		var text = ctx.message.text;
 		if ( text === '/post' ) {
 			poster( ctx );
@@ -404,8 +381,8 @@ var porter = function ( ctx ) {
 			logger.info( 'Post deleted. No post set' );
 		}
 	}
-}
-bot.command( ['id', 'title', 'text', 'post', 'tags', 'state', 'format', 'url', 'description', 'quote', 'source', 'caption', 'link', 'delete'], ( ctx ) => { logger.debug( '\'', ctx.message.text, '\' from', ctx.chat.id ); porter( ctx ) } )
+};
+bot.command( ['id', 'title', 'text', 'post', 'tags', 'state', 'format', 'url', 'description', 'quote', 'source', 'caption', 'link', 'delete'], ( ctx ) => { logger.debug( '\'', ctx.message.text, '\' from', ctx.chat.id ); porter( ctx ) } );
 
 bot.command( 'help', ctx => {
 	var msg = 'If you need to start from scratch, please use /start to set\
@@ -432,9 +409,9 @@ bot.command( 'help', ctx => {
   /title: the title of the page the link points to\n\
   /url: the link\n\
   /description: a user-supplied description\n\
-  That\' all folks! Have fun'
-	ctx.reply( msg, { parse_mode: 'HTML' } )
-} )
+  That\' all folks! Have fun';
+	ctx.reply( msg, { parse_mode: 'HTML' } );
+} );
 
 bot.command( 'start', ctx => {
 	logger.debug( '\'/start\' from', ctx.chat.id );
@@ -449,13 +426,49 @@ bot.command( 'start', ctx => {
   <code>/tags awesome,telegram,telegramBot,tumblr,nerd</code>\n\
   will create a text post with tags.\n\
   Use /help for a more detailed command list\n\
-  (PS: i\'d suggest you edit your message containing the oAuth key immediately once sent, if your are in a group)'
+  (PS: i\'d suggest you edit your message containing the oAuth key immediately once sent, if your are in a group)';
 	ctx.reply( msg, { parse_mode: 'HTML' } );
-} )
-bot.command( 'oAuth', ctx => ctx.reply( 'http://telegra.ph/Getting-an-oAuth-key-12-07' ) )
+} );
+bot.command( 'oAuth', ctx => ctx.reply( 'http://telegra.ph/Getting-an-oAuth-key-12-07' ) );
 
 bot.telegram.getMe().then( ( botInfo ) => {
-	bot.options.username = botInfo.username
-	logger.info( 'Started bot ' + bot.options.username )
-} )
-bot.startPolling()
+	bot.options.username = botInfo.username;
+	logger.info( 'Started bot ' + bot.options.username );
+} );
+
+var download_auth = function () {
+	var params = { Bucket: "tumblr.auth", Key: "auth.json" };
+
+	s3.getObject( params, function ( err, data ) {
+		if ( err ) logger.error( "S3 not responding" );
+		else {
+			logger.info( "Data contains:\n" + ( data.Body ).toString() );
+			authenticating = JSON.parse( ( data.Body ).toString() );
+			logger.info( "Authentication contains:\n%j", authenticating );
+		}
+	} );
+};
+
+var upload_auth = function () {
+
+	let params = { Body: JSON.stringify(authenticating), Bucket: "tumblr.auth", Key: "auth.json" };
+
+	s3.putObject( params, function ( err, data ) {
+		if ( err ) logger.error( err.code, "-", err.message );
+		else logger.info( "Uploaded:\n%j", data );
+	} );
+	// altrimenti tutto ok
+	// Se ci sono errori da S3 invia un messaggio dicendo che il DB non risponde
+};
+
+/* AWS Lambda handler function */
+exports.handler = ( event, context, callback ) => {
+
+	download_auth();
+	const tmp = JSON.parse( event.body ); // get data passed to us
+	bot.handleUpdate( tmp ); // make Telegraf process that data
+	return callback( null, { // return something for webhook, so it doesn't try to send same stuff again
+		statusCode: 200,
+		body: '',
+	} );
+};
